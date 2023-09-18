@@ -12,12 +12,12 @@
 #include <wasmtime/error.h>
 
 #ifndef WASI_API_EXTERN
-#ifdef _WIN32
+#if defined _WIN32  && !defined(__MINGW32__) && !defined(LIBWASM_STATIC)
 #define WASI_API_EXTERN __declspec(dllimport)
 #else
 #define WASI_API_EXTERN
-#endif
-#endif
+#endif // _WIN32 or else
+#endif // WASI_API_EXTERN
 
 #ifdef __cplusplus
 #include <cstdint>
