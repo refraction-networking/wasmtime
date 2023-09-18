@@ -1,14 +1,20 @@
 //! The WASI embedding API definitions for Wasmtime.
 
-use crate::wasm_byte_vec_t;
-use anyhow::Result;
+use crate::{wasm_byte_vec_t, wasmtime_error_t};
+use anyhow::{anyhow, Result};
 use cap_std::ambient_authority;
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::ffi::CStr;
 use std::fs::File;
+#[cfg(unix)]
+use std::os::fd::{FromRawFd, RawFd};
 use std::os::raw::{c_char, c_int};
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
 use std::slice;
+use wasi_common::file::FileAccessMode;
 use wasi_common::pipe::ReadPipe;
 use wasmtime_wasi::{
     sync::{Dir, TcpListener, WasiCtxBuilder},
@@ -315,4 +321,80 @@ pub unsafe extern "C" fn wasi_config_preopen_socket(
         .insert(fd_num, TcpListener::from_std(listener));
 
     true
+}
+
+/// Refraction-Networking changes begin here
+
+#[no_mangle]
+pub extern "C" fn wasi_ctx_new() -> Box<WasiCtx> {
+    Box::new(WasiCtxBuilder::new().build())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasi_ctx_insert_file(
+    ctx: &mut WasiCtx,    // input, wasi_ctx_t.
+    guest_fd: u32,        // input, uint32_t: guest file descriptor
+    host_fd: *mut c_void, // input, void*: file descriptor, int on Linux, HANDLE on Windows
+    access_mode: u32,     // input, uint32_t: 0'b1 = Read-only, 0'b10 = Write-only, 0'b11 = RW
+) -> Option<Box<wasmtime_error_t>> {
+    let access_mode = FileAccessMode::from_bits_truncate(access_mode);
+
+    // SAFETY: caller should make sure there is no other owner for the file descriptor.
+    // Calling `from_raw_fd`/`from_raw_handle` essentially assumes the exclusive ownership.
+    #[cfg(unix)]
+    let f = File::from_raw_fd(host_fd as RawFd);
+    #[cfg(windows)]
+    let f = File::from_raw_handle(host_fd as RawHandle);
+    #[cfg(not(any(windows, unix)))]
+    {
+        // error instead of panic, to be friendly :)
+        return Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+            "unsupported platform"
+        )))));
+    }
+    let f = cap_std::fs::File::from_std(f);
+    let f = wasmtime_wasi::sync::file::File::from_cap_std(f);
+    ctx.insert_file(guest_fd, Box::new(f), access_mode);
+
+    None
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasi_ctx_push_file(
+    ctx: &mut WasiCtx,
+    host_fd: u32,
+    access_mode: u32,
+    guest_fd: &mut u32,
+) -> Option<Box<wasmtime_error_t>> {
+    let access_mode = FileAccessMode::from_bits_truncate(access_mode);
+
+    // SAFETY: caller should make sure there is no other owner for the file descriptor.
+    // Calling `from_raw_fd`/`from_raw_handle` essentially assumes the exclusive ownership.
+    #[cfg(unix)]
+    let f = File::from_raw_fd(host_fd as RawFd);
+    #[cfg(windows)]
+    let f = File::from_raw_handle(host_fd as RawHandle);
+    #[cfg(not(any(windows, unix)))]
+    {
+        // error instead of panic, to be friendly :)
+        return Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+            "unsupported platform"
+        )))));
+    }
+    let f = cap_std::fs::File::from_std(f);
+    let f = wasmtime_wasi::sync::file::File::from_cap_std(f);
+
+    match ctx.push_file(Box::new(f), access_mode) {
+        Ok(fd) => {
+            *guest_fd = fd;
+            None
+        }
+        Err(e) => {
+            // extract the error message
+            Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+                "WasiCtx.push_file: {}",
+                e
+            )))))
+        }
+    }
 }

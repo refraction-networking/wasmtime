@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include "wasm.h"
+#include <wasmtime/error.h>
 
 #ifndef WASI_API_EXTERN
 #ifdef _WIN32
@@ -169,6 +170,48 @@ WASI_API_EXTERN bool wasi_config_preopen_dir(wasi_config_t* config, const char* 
  * "127.0.0.1:8080") requested to listen on.
  */
 WASI_API_EXTERN bool wasi_config_preopen_socket(wasi_config_t* config, uint32_t fd_num, const char* host_port);
+
+/// Refraction-Networking changes begin here
+
+/**
+ * \typedef wasi_ctx_t
+ * \brief Convenience alias for #WasiCtx
+ * 
+ * \struct wasi_ctx_t
+ * \brief TODO
+ * 
+ * \fn void wasi_ctx_delete(wasi_ctx_t *);
+ * \brief Deletes a WASI context object.
+ */
+WASI_DECLARE_OWN(ctx)
+
+WASI_API_EXTERN own wasi_ctx_t* wasi_ctx_new();
+
+/**
+ * \brief Insert a file descriptor into the WASI context. 
+ * 
+ * This is used to dynamically bind a file descriptor from the host to a file 
+ * descriptor in an already-built WASI context to make it available to WASI APIs.
+ * 
+ * The `guest_fd` argument is the number of the file descriptor by which it will
+ * be known in WASM and the `host_fd` is the number of the file descriptor on
+ * the host.
+ */
+WASI_API_EXTERN wasmtime_error_t *wasi_ctx_insert_file(wasi_ctx_t *ctx, uint32_t guest_fd, void *host_fd, uint32_t access_mode);
+
+/**
+ * \brief Push a file descriptor into the WASI context.
+ * 
+ * This is used to dynamically bind a file descriptor from the host to the next 
+ * available file descriptor in an already-built WASI context to make it available 
+ * to WASI APIs.
+ * 
+ * The `host_fd` argument is the number of the file descriptor on the host and the
+ * `access_mode` is the access mode of the file descriptor.
+ */
+WASI_API_EXTERN wasmtime_error_t *wasi_ctx_push_file(wasi_ctx_t *ctx, void *host_fd, uint32_t access_mode, uint32_t *guest_fd);
+
+/// Refraction-Networking changes end here
 
 #undef own
 
