@@ -1,11 +1,19 @@
 use crate::{wasm_engine_t, wasmtime_error_t, wasmtime_val_t, ForeignData};
+use anyhow::anyhow;
 use std::cell::UnsafeCell;
 use std::ffi::c_void;
+use std::fs::File;
+#[cfg(unix)]
+use std::os::fd::{FromRawFd, RawFd};
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, RawHandle};
 use std::sync::Arc;
+use wasi_common::file::FileAccessMode;
 use wasmtime::{
     AsContext, AsContextMut, Store, StoreContext, StoreContextMut, StoreLimits, StoreLimitsBuilder,
     UpdateDeadline, Val,
 };
+use wasmtime_wasi::{sync::WasiCtxBuilder, WasiCtx};
 
 /// This representation of a `Store` is used to implement the `wasm.h` API.
 ///
@@ -258,4 +266,118 @@ pub extern "C" fn wasmtime_context_set_epoch_deadline(
     ticks_beyond_current: u64,
 ) {
     store.set_epoch_deadline(ticks_beyond_current);
+}
+
+/// Refraction-Networking changes begin here
+
+#[cfg(feature = "wasi")]
+#[no_mangle]
+pub extern "C" fn wasmtime_context_set_default_wasi_if_not_exist(
+    mut context: CStoreContextMut<'_>,
+) -> bool {
+    let wasi = WasiCtxBuilder::new().build();
+    // let wasi = WasiCtx::new(random_ctx(), clocks_ctx(), sched_ctx(), Table::new());
+
+    match context.data_mut().wasi.as_mut() {
+        Some(_) => false,
+        None => {
+            context.data_mut().wasi = Some(wasi);
+            true
+        }
+    }
+}
+
+#[cfg(feature = "wasi")]
+#[no_mangle]
+pub extern "C" fn wasmtime_context_get_wasi_ctx(context: CStoreContext<'_>) -> Box<WasiCtx> {
+    Box::new(context.data().wasi.as_ref().unwrap().clone())
+}
+
+#[cfg(feature = "wasi")]
+#[no_mangle]
+pub extern "C" fn wasmtime_context_set_wasi_ctx(
+    mut context: CStoreContextMut<'_>,
+    wasi_ctx: Box<WasiCtx>,
+) {
+    context.data_mut().wasi = Some(*wasi_ctx);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasmtime_context_insert_file(
+    context: CStoreContextMut, // input, wasmtime_context_t.
+    guest_fd: u32,             // input, uint32_t: guest file descriptor
+    host_fd: *mut c_void,      // input, void*: file descriptor, int on Linux, HANDLE on Windows
+    access_mode: u32,          // input, uint32_t: 0'b1 = Read-only, 0'b10 = Write-only, 0'b11 = RW
+) -> Option<Box<wasmtime_error_t>> {
+    let access_mode = FileAccessMode::from_bits_truncate(access_mode);
+
+    // SAFETY: caller should make sure there is no other owner for the file descriptor.
+    // Calling `from_raw_fd`/`from_raw_handle` essentially assumes the exclusive ownership.
+    #[cfg(unix)]
+    let f = File::from_raw_fd(host_fd as RawFd);
+    #[cfg(windows)]
+    let f = File::from_raw_handle(host_fd as RawHandle);
+    #[cfg(not(any(windows, unix)))]
+    {
+        // error instead of panic, to be friendly :)
+        return Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+            "unsupported platform"
+        )))));
+    }
+    let f = cap_std::fs::File::from_std(f);
+    let f = wasmtime_wasi::sync::file::File::from_cap_std(f);
+    context
+        .data()
+        .wasi
+        .as_ref()
+        .unwrap()
+        .insert_file(guest_fd, Box::new(f), access_mode);
+
+    None
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasmtime_context_push_file(
+    context: CStoreContextMut, // input, wasmtime_context_t.
+    host_fd: *mut c_void,      // input, void*: file descriptor, int on Linux, HANDLE on Windows
+    access_mode: u32,          // input, uint32_t: 0'b1 = Read-only, 0'b10 = Write-only, 0'b11 = RW
+    guest_fd: &mut u32,        // output, ptr to uint32_t: guest file descriptor (next available)
+) -> Option<Box<wasmtime_error_t>> {
+    let access_mode = FileAccessMode::from_bits_truncate(access_mode);
+
+    // SAFETY: caller should make sure there is no other owner for the file descriptor.
+    // Calling `from_raw_fd`/`from_raw_handle` essentially assumes the exclusive ownership.
+    #[cfg(unix)]
+    let f = unsafe { File::from_raw_fd(host_fd as RawFd) };
+    #[cfg(windows)]
+    let f = unsafe { File::from_raw_handle(host_fd as RawHandle) };
+    #[cfg(not(any(windows, unix)))]
+    {
+        // error instead of panic, to be friendly :)
+        return Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+            "unsupported platform"
+        )))));
+    }
+    let f = cap_std::fs::File::from_std(f);
+    let f = wasmtime_wasi::sync::file::File::from_cap_std(f);
+
+    match context
+        .data()
+        .wasi
+        .as_ref()
+        .unwrap()
+        .push_file(Box::new(f), access_mode)
+    {
+        Ok(fd) => {
+            *guest_fd = fd;
+            None
+        }
+        Err(e) => {
+            // extract the error message
+            Some(Box::new(wasmtime_error_t::from(anyhow!(format!(
+                "WasiCtx.push_file: {}",
+                e
+            )))))
+        }
+    }
 }

@@ -243,6 +243,38 @@ WASM_API_EXTERN void wasmtime_context_set_epoch_deadline(wasmtime_context_t *con
  */
 WASM_API_EXTERN void wasmtime_store_epoch_deadline_callback(wasmtime_store_t *store, wasmtime_error_t* (*func)(wasmtime_context_t*, void*, uint64_t*), void *data);
 
+/// Refraction-Networking changes begin here
+
+/**
+ * \brief Configures default WASI state if it is not set. 
+ * 
+ * This function is required if #wasmtime_context_set_wasi is not guaranteed to 
+ * be called at an earlier time. This will configure the WASI state for instances
+ * defined within this store to the default (empty) configuration.
+ * 
+ * This function does not take ownership of `context`. It is created to be used in
+ * conjunction with #wasmtime_context_get_wasi_ctx.
+ */
+WASM_API_EXTERN bool wasmtime_context_set_default_wasi_if_not_exist(wasmtime_context_t *context);
+
+/**
+ * \brief Returns the WASI state for this store.
+ *
+ * This function returns the WASI state for this store, if it has been
+ * configured. If it has not been configured then the program will panic.
+ *
+ * The returned `context` is owned by the store, which effectively makes this 
+ * function unsafe. This function should be called only after calling 
+ * #wasmtime_context_set_wasi or #wasmtime_context_set_default_wasi_if_not_exist.
+ */
+WASM_API_EXTERN wasi_ctx_t *wasmtime_context_get_wasi_ctx(wasmtime_context_t *context);
+
+WASM_API_EXTERN void wasmtime_context_set_wasi_ctx(wasmtime_context_t *context, wasi_ctx_t *wasi_ctx);
+WASM_API_EXTERN wasmtime_error_t *wasmtime_context_insert_file(wasmtime_context_t *context, uint32_t guest_fd, void *host_fd, uint32_t access_mode);
+WASM_API_EXTERN wasmtime_error_t *wasmtime_context_push_file(wasmtime_context_t *context, void *host_fd, uint32_t access_mode, uint32_t *guest_fd);
+
+/// Refraction-Networking changes end here
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
