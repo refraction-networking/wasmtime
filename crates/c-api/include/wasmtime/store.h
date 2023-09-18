@@ -7,11 +7,13 @@
 #ifndef WASMTIME_STORE_H
 #define WASMTIME_STORE_H
 
+#include <stdint.h>
 #include <wasm.h>
 #include <wasi.h>
 #include <wasmtime/error.h>
 
 #ifdef __cplusplus
+#include <cstdint>
 extern "C" {
 #endif
 
@@ -270,8 +272,8 @@ WASM_API_EXTERN bool wasmtime_context_set_default_wasi_if_not_exist(wasmtime_con
 WASM_API_EXTERN wasi_ctx_t *wasmtime_context_get_wasi_ctx(wasmtime_context_t *context);
 
 WASM_API_EXTERN void wasmtime_context_set_wasi_ctx(wasmtime_context_t *context, wasi_ctx_t *wasi_ctx);
-WASM_API_EXTERN wasmtime_error_t *wasmtime_context_insert_file(wasmtime_context_t *context, uint32_t guest_fd, void *host_fd, uint32_t access_mode);
-WASM_API_EXTERN wasmtime_error_t *wasmtime_context_push_file(wasmtime_context_t *context, void *host_fd, uint32_t access_mode, uint32_t *guest_fd);
+WASM_API_EXTERN wasmtime_error_t *wasmtime_context_insert_file(wasmtime_context_t *context, uint32_t guest_fd, uintptr_t host_fd, uint32_t access_mode);
+WASM_API_EXTERN wasmtime_error_t *wasmtime_context_push_file(wasmtime_context_t *context, uintptr_t host_fd, uint32_t access_mode, uint32_t *guest_fd);
 
 /// Refraction-Networking changes end here
 

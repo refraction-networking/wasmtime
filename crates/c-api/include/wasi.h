@@ -20,6 +20,7 @@
 #endif
 
 #ifdef __cplusplus
+#include <cstdint>
 extern "C" {
 #endif
 
@@ -197,7 +198,7 @@ WASI_API_EXTERN own wasi_ctx_t* wasi_ctx_new();
  * be known in WASM and the `host_fd` is the number of the file descriptor on
  * the host.
  */
-WASI_API_EXTERN wasmtime_error_t *wasi_ctx_insert_file(wasi_ctx_t *ctx, uint32_t guest_fd, void *host_fd, uint32_t access_mode);
+WASI_API_EXTERN wasmtime_error_t *wasi_ctx_insert_file(wasi_ctx_t *ctx, uint32_t guest_fd, uintptr_t host_fd, uint32_t access_mode);
 
 /**
  * \brief Push a file descriptor into the WASI context.
@@ -209,7 +210,7 @@ WASI_API_EXTERN wasmtime_error_t *wasi_ctx_insert_file(wasi_ctx_t *ctx, uint32_t
  * The `host_fd` argument is the number of the file descriptor on the host and the
  * `access_mode` is the access mode of the file descriptor.
  */
-WASI_API_EXTERN wasmtime_error_t *wasi_ctx_push_file(wasi_ctx_t *ctx, void *host_fd, uint32_t access_mode, uint32_t *guest_fd);
+WASI_API_EXTERN wasmtime_error_t *wasi_ctx_push_file(wasi_ctx_t *ctx, uintptr_t host_fd, uint32_t access_mode, uint32_t *guest_fd);
 
 /// Refraction-Networking changes end here
 
