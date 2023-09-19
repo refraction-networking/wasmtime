@@ -329,6 +329,9 @@ pub extern "C" fn wasi_ctx_new() -> Box<WasiCtx> {
     Box::new(WasiCtxBuilder::new().build())
 }
 
+#[no_mangle]
+pub extern "C" fn wasi_ctx_delete(_: Box<WasiCtx>) {}
+
 #[cfg(unix)]
 #[no_mangle]
 pub unsafe extern "C" fn wasi_ctx_insert_file(
